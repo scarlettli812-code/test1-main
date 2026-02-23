@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>激活码管理后台</title>
+    <style>
+        :root{ --bg:#0b0f17; --card:#111827; --text:#e5e7eb; --muted:#9ca3af; --accent:#8b5cf6; --accent2:#22c55e; --border:#1f2937; --radius: 18px; --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui, sans-serif; display:flex; justify-content:center; align-items:center; min-height:100vh; }
+        .card{ background:#111827; border:1px solid var(--border); border-radius:var(--radius); padding:24px; width:100%; max-width:450px; box-shadow:0 10px 30px rgba(0,0,0,0.5); }
+        h2{ margin-top:0; color:var(--accent2); }
+        .input{ width:100%; border:1px solid var(--border); background:rgba(15,23,42,0.6); color:var(--text); padding:12px; border-radius:12px; outline:none; margin:8px 0; box-sizing:border-box; }
+        button{ width:100%; border:none; background:linear-gradient(135deg, #8b5cf6, #22c55e); color:white; padding:12px; border-radius:12px; cursor:pointer; font-weight:bold; margin-top:10px; }
+        .notice{ padding:12px; border-radius:12px; border:1px solid #334155; background:rgba(30,41,59,0.5); margin-top:15px; word-break:break-all; }
+        .mono{ font-family:var(--mono); font-size:1.1em; color:var(--accent2); }
+        .small{ font-size:12px; color:var(--muted); margin-top:5px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>激活码生成器</h2>
+        <p class="small">生成的码将存入 Upstash 数据库</p>
+        
+        <label class="small">有效期（小时）</label>
+        <input id="ttlInput" class="input" type="number" value="72" />
+        
+        <label class="small">可用次数（1=一次性）</label>
+        <input id="usesInput" class="input" type="number" value="1" />
+
+        <button id="btnGen">点击生成激活码</button>
+
+        <div id="genBox" class="notice" style="display:none;">
+            <div class="small">新生成的激活码：</div>
+            <div id="genCode" class="mono"></div>
+            <div id="genMeta" class="small"></div>
+            <button onclick="copyCode()" style="background:#334155; font-size:12px; padding:5px;">复制激活码</button>
+        </div>
+    </div>
+
+    <script>
+        const btnGen = document.getElementById("btnGen");
+        const genBox = document.getElementById("genBox");
+        const genCode = document.getElementById("genCode");
+        const genMeta = document.getElementById("genMeta");
+
+        btnGen.addEventListener("click", async () => {
+            const adminPass = prompt("请输入你在 Vercel 设置的管理密码(ADMIN_PASSWORD):");
+            if(!adminPass) return;
+
+            btnGen.disabled = true;
+            btnGen.textContent = "生成中...";
+
+            try {
+                const res = await fetch("/api/create", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        ttlHours: Number(document.getElementById("ttlInput").value),
+                        uses: Number(document.getElementById("usesInput").value),
+                        adminPass: adminPass
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    genBox.style.display = "block";
+                    genCode.textContent = data.code;
+                    genMeta.textContent = `有效期至: ${new Date(data.expiresAt).toLocaleString()}`;
+                } else {
+                    alert("错误: " + data.msg);
+                }
+            } catch (err) {
+                alert("请求失败，请检查网络或 Vercel 部署");
+            } finally {
+                btnGen.disabled = false;
+                btnGen.textContent = "点击生成激活码";
+            }
+        });
+
+        function copyCode() {
+            navigator.clipboard.writeText(genCode.textContent);
+            alert("已复制");
+        }
+    </script>
+</body>
+</html>
