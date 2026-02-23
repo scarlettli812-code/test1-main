@@ -3,58 +3,71 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>激活码管理后台</title>
+    <title>激活码批量管理后台</title>
     <style>
-        :root{ --bg:#0b0f17; --card:#111827; --text:#e5e7eb; --muted:#9ca3af; --accent:#8b5cf6; --accent2:#22c55e; --border:#1f2937; --radius: 18px; --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-        body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui, sans-serif; display:flex; justify-content:center; align-items:center; min-height:100vh; }
-        .card{ background:#111827; border:1px solid var(--border); border-radius:var(--radius); padding:24px; width:100%; max-width:450px; box-shadow:0 10px 30px rgba(0,0,0,0.5); }
-        h2{ margin-top:0; color:var(--accent2); }
-        .input{ width:100%; border:1px solid var(--border); background:rgba(15,23,42,0.6); color:var(--text); padding:12px; border-radius:12px; outline:none; margin:8px 0; box-sizing:border-box; }
+        :root{ --bg:#0b0f17; --card:#111827; --text:#e5e7eb; --muted:#9ca3af; --accent:#8b5cf6; --accent2:#22c55e; --border:#1f2937; --radius: 18px; }
+        body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui, sans-serif; display:flex; justify-content:center; align-items:center; min-height:100vh; padding:20px; }
+        .card{ background:#111827; border:1px solid var(--border); border-radius:var(--radius); padding:24px; width:100%; max-width:500px; box-shadow:0 10px 30px rgba(0,0,0,0.5); }
+        h2{ margin-top:0; color:var(--accent2); font-size:20px; }
+        .input-group{ margin-bottom:15px; }
+        label{ display:block; font-size:12px; color:var(--muted); margin-bottom:5px; }
+        .input{ width:100%; border:1px solid var(--border); background:rgba(15,23,42,0.6); color:var(--text); padding:12px; border-radius:12px; outline:none; box-sizing:border-box; }
         button{ width:100%; border:none; background:linear-gradient(135deg, #8b5cf6, #22c55e); color:white; padding:12px; border-radius:12px; cursor:pointer; font-weight:bold; margin-top:10px; }
-        .notice{ padding:12px; border-radius:12px; border:1px solid #334155; background:rgba(30,41,59,0.5); margin-top:15px; word-break:break-all; }
-        .mono{ font-family:var(--mono); font-size:1.1em; color:var(--accent2); }
-        .small{ font-size:12px; color:var(--muted); margin-top:5px; }
+        button.secondary{ background:#334155; margin-top:10px; font-size:13px; }
+        .result-box{ margin-top:20px; display:none; }
+        textarea{ width:100%; height:150px; background:rgba(0,0,0,0.3); color:var(--accent2); border:1px solid var(--border); border-radius:12px; padding:10px; font-family: monospace; resize: none; margin-top:10px; }
+        .info{ font-size:12px; color:var(--muted); margin-top:10px; text-align:center; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>激活码生成器</h2>
-        <p class="small">生成的码将存入 Upstash 数据库</p>
+        <h2>批量生成激活码</h2>
         
-        <label class="small">有效期（小时）</label>
-        <input id="ttlInput" class="input" type="number" value="72" />
-        
-        <label class="small">可用次数（1=一次性）</label>
-        <input id="usesInput" class="input" type="number" value="1" />
+        <div class="input-group">
+            <label>生成数量 (建议单次不超过100个)</label>
+            <input id="countInput" class="input" type="number" value="10" />
+        </div>
 
-        <button id="btnGen">点击生成激活码</button>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <div class="input-group">
+                <label>有效期 (小时)</label>
+                <input id="ttlInput" class="input" type="number" value="720" /> <!-- 默认30天 -->
+            </div>
+            <div class="input-group">
+                <label>使用次数</label>
+                <input id="usesInput" class="input" type="number" value="1" />
+            </div>
+        </div>
 
-        <div id="genBox" class="notice" style="display:none;">
-            <div class="small">新生成的激活码：</div>
-            <div id="genCode" class="mono"></div>
-            <div id="genMeta" class="small"></div>
-            <button onclick="copyCode()" style="background:#334155; font-size:12px; padding:5px;">复制激活码</button>
+        <button id="btnGen">批量生产激活码</button>
+
+        <div id="resultBox" class="result-box">
+            <label>生成成功！每行一个码，可直接导入发货系统：</label>
+            <textarea id="codeList" readonly></textarea>
+            <button class="secondary" id="btnCopyAll">一键复制全部卡密</button>
+            <div id="expireInfo" class="info"></div>
         </div>
     </div>
 
     <script>
         const btnGen = document.getElementById("btnGen");
-        const genBox = document.getElementById("genBox");
-        const genCode = document.getElementById("genCode");
-        const genMeta = document.getElementById("genMeta");
+        const resultBox = document.getElementById("resultBox");
+        const codeList = document.getElementById("codeList");
+        const btnCopyAll = document.getElementById("btnCopyAll");
 
         btnGen.addEventListener("click", async () => {
-            const adminPass = prompt("请输入你在 Vercel 设置的管理密码(ADMIN_PASSWORD):");
+            const adminPass = prompt("请输入管理密码:");
             if(!adminPass) return;
 
             btnGen.disabled = true;
-            btnGen.textContent = "生成中...";
+            btnGen.textContent = "正在同步云端数据库...";
 
             try {
                 const res = await fetch("/api/create", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
+                        count: Number(document.getElementById("countInput").value),
                         ttlHours: Number(document.getElementById("ttlInput").value),
                         uses: Number(document.getElementById("usesInput").value),
                         adminPass: adminPass
@@ -62,24 +75,25 @@
                 });
                 const data = await res.json();
                 if (res.ok) {
-                    genBox.style.display = "block";
-                    genCode.textContent = data.code;
-                    genMeta.textContent = `有效期至: ${new Date(data.expiresAt).toLocaleString()}`;
+                    resultBox.style.display = "block";
+                    codeList.value = data.codes.join("\n");
+                    document.getElementById("expireInfo").textContent = "有效期至：" + new Date(data.expiresAt).toLocaleString();
                 } else {
                     alert("错误: " + data.msg);
                 }
             } catch (err) {
-                alert("请求失败，请检查网络或 Vercel 部署");
+                alert("请求失败，请检查网络");
             } finally {
                 btnGen.disabled = false;
-                btnGen.textContent = "点击生成激活码";
+                btnGen.textContent = "批量生产激活码";
             }
         });
 
-        function copyCode() {
-            navigator.clipboard.writeText(genCode.textContent);
-            alert("已复制");
-        }
+        btnCopyAll.addEventListener("click", () => {
+            codeList.select();
+            document.execCommand("copy");
+            alert("已全部复制到剪贴板，可前往发货软件粘贴。");
+        });
     </script>
 </body>
 </html>
